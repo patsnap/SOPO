@@ -1,23 +1,17 @@
 import json
 import os
 import sys
-import time
 import asyncio
-from copy import deepcopy
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from openai import OpenAI
 
-import json5
 from qwen_agent.agents.fncall_agent import FnCallAgent
 from qwen_agent.llm.schema import Message
-from qwen_agent.settings import MAX_LLM_CALL_PER_RUN
 from transformers import PreTrainedTokenizer
 from qwen_agent.tools import BaseTool
 from areal.experimental.openai import ArealOpenAI
 from areal.utils import logging
-import uuid
 import re
 import traceback
 import random
@@ -151,8 +145,24 @@ Paragraph 2 (Guidance): Ask a leading Socratic question based on the CONTEXT to 
 """
 
 
-PROMPT_CRITIC_TEMPLATE_LIMITED_SPOILER = """# ROLE
-You are a Corrective Logic Guide. Your goal is to help the user (who provided the `CoT`) fix their reasoning errors. You are talking directly to them.
+PROMPT_CRITIC_TEMPLATE_LIMITED_SPOILER_v2 = """# ROLE
+You are a Corrective Logic Guide helping a student fix their reasoning errors. You must speak directly to the student using "you" and "your".
+
+# INSTRUCTIONS
+Your task is to read the student's `CoT` and compare it against the `CONTEXT` and the `CORRECT_ANSWER`. Find the exact step (e.g., ## Step 2) where the student makes their first logical error or hallucination.
+
+You must follow these strict rules:
+1. LIMITED SPOILERS: You ARE ALLOWED to reveal specific facts from the CONTEXT or CORRECT_ANSWER to correct a factual error in the student's current step.
+2. However, you MUST NOT simply blurt out the final classification (e.g., "The answer is False") without explanation. Provide the evidence instead.
+3. Address the student directly (e.g., "You stated that...").
+
+# HOW TO RESPOND
+Write your response in exactly two natural paragraphs:
+
+Paragraph 1 (Analysis): Directly tell the student which step contains the error. Explicitly contrast what they said versus what the CONTEXT actually states. It is okay to reveal the specific fact they got wrong. Do not use any special formatting or tags.
+
+Paragraph 2 (Guidance): Provide the specific evidence or correct fact to fix their mistake. After providing the fact, you MUST conclude your response with this exact sentence:
+"Please re-examine the logic in ## Step [n] using this correct information and re-evaluate your conclusion from there." (Replace [n] with the actual step number where the error occurred).
 
 # INPUT DATA
 ## CONTEXT
@@ -164,70 +174,9 @@ You are a Corrective Logic Guide. Your goal is to help the user (who provided th
 ## CORRECT_ANSWER (HIDDEN TRUTH)
 {correct_answer}
 
-## CoT (User's Chain of Thought)
+## CoT (Student's Chain of Thought)
 {result}
-
-# CRITICAL RULES (NON-NEGOTIABLE)
-1. **VOICE & TONE:** Speak directly to the user using "**you**" and "**your**". Be helpful but firm on facts.
-2. **LIMITED SPOILERS (THE GOLDEN RULE):** 
-   - You **ARE ALLOWED** to reveal specific facts from the `CONTEXT` or `CORRECT_ANSWER` to correct a factual error in the user's current step.
-   - You **MUST NOT** simply blurt out the final classification (e.g., "The answer is False") without explanation. Instead, provide the **evidence** that leads to that conclusion.
-   - *Goal:* Don't just give the fish; give them the fishing rod (the correct fact) so they can catch the fish (the conclusion) themselves.
-3. **LOCATE THE ERROR:** Scan the `CoT` for the `## Step n` markers. Find the *first* step where **the user's** logic contradicts the `CONTEXT`.
-4. **CORRECT WITH EVIDENCE:** Instead of asking vague questions, explicitly point out: "You said X, but the document actually says Y." Use the ground truth to invalidate their false premise.
-5. **MANDATORY REDIRECTION:** Conclude by instructing the user to restart their reasoning from the error step, incorporating the correct fact you just provided.
-
-# WORKFLOW
-1. **Compare:** Check the user's `## Step n` against the `CONTEXT`.
-2. **Identify:** Pinpoint the exact step where the user hallucinated or ignored a fact.
-3. **Draft Correction:** Formulate a statement that reveals the *specific truth* needed to fix that step.
-   - *Bad Response:* "You are wrong. The answer is False." (Too direct/Lazy)
-   - *Good Response:* "In Step 2, you claimed the revenue increased. However, the Context explicitly states revenue decreased by 5%." (Targeted Spoiler)
-4. **Output:** Structure your response strictly as defined below.
-
-# RESPONSE FORMAT
-<analysis>
-[Analyze the specific error in the identified Step. Explicitly contrast what **the user** said versus what the `CONTEXT/CORRECT_ANSWER` says. It is okay to reveal the specific fact they got wrong.]
-</analysis>
-
-<guidance>
-[Provide the specific evidence or fact that corrects their mistake.]
-**Please re-examine ## Step [n] using this correct information and re-evaluate your conclusion.**
-</guidance>"""
-
-PROMPT_CRITIQUE_GRPO = """# ROLE
-You are a Logic & Science Evaluation Expert. Your task is to evaluate a student's reasoning (CoT) based on provided evidence and guide them to the correct conclusion without prematurely revealing the final answer label.
-
-# INPUT DATA
-## CONTEXT
-{context_fmt_str}
-
-## STATEMENT
-{statement}
-
-## CORRECT_ANSWER (HIDDEN TRUTH)
-{correct_answer}
-
-## CoT (User's Chain of Thought)
-{result}
-
-# EVALUATION STEPS & RULES
-1. **Identify the First Error:** Scan the user's `## Step n` markers. Find the very first step where their logic deviates from the `CONTEXT` or the `CORRECT_ANSWER`.
-2. **Fact-Based Correction (The "Fishing Rod" Principle):** - DO NOT simply say "The answer is [True/False]".
-   - DO provide the specific fact or evidence from the `CONTEXT` that contradicts the user's error. 
-   - Address the user directly as "you". (e.g., "In Step 2, you assumed X, but the context states Y.")
-3. **Guidance:** Briefly explain the logical implication of this corrected fact to help the user bridge the gap.
-
-# RESPONSE FORMAT
-Please provide your evaluation in the following structure:
-
-### Evaluation Detail
-- **Step-by-step Analysis:** [Briefly walk through the user's steps and point out exactly where and why the first error occurred using evidence from the Context.]
-- **Key Correction:** [Provide the specific "hidden truth" or fact they missed.]
-
-**Direction:** Please re-examine your reasoning starting from ## Step [n] using the information provided above.
-
-Conclusion: [correct/incorrect] [END]"""
+"""
 
 THRESH_FEEDBACK = 0.6
 PROB_FEEDBACK = 0.6
@@ -289,7 +238,7 @@ class TeacherModel(object):
         response_student: str,
     ) -> float:
         if SPOILER:
-            prompt = PROMPT_CRITIC_TEMPLATE_LIMITED_SPOILER.format(
+            prompt = PROMPT_CRITIC_TEMPLATE_LIMITED_SPOILER_v2.format(
                 context_fmt_str=context_fmt_str,
                 statement=statement,
                 correct_answer=correct_answer,

@@ -1,26 +1,17 @@
-import re
 import json
-import string
-import random
-import torch
 import os
-import numpy as np
 import traceback
 import asyncio
 import logging
-from pydantic import BaseModel, ValidationError
-from typing import List, Dict, Optional, Tuple
-from collections import defaultdict
+from typing import List, Dict
 from datetime import datetime
 from dataclasses import dataclass
-from enum import Enum
 import collections
 import uuid
 from utils_metric import compute_metrics, parse_result
 logger = logging.getLogger(__name__)
 
 
-# 常量定义 - 防止魔法数字
 class ScoreConstants:
     """奖励分数相关常量"""
 

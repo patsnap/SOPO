@@ -2,6 +2,13 @@
 
 **SOPO (Socratic Policy Optimization)** is a multi-turn RL training method for hallucination detection. Compared to standard GRPO, SOPO introduces a teacher model that provides Socratic feedback when the student's answer is below a score threshold, guiding self-correction across turns.
 
+## Released Models
+
+| Model | URL |
+|---|---|
+| SOPO 4B | [https://huggingface.co/OverwhelmingFit/SOPO-4B](#) |
+| SOPO 1.7B | [https://huggingface.co/OverwhelmingFit/SOPO-1.7B](#) |
+
 ## Methods
 
 | Script | Method | Teacher Feedback |
@@ -10,11 +17,10 @@
 | `train_grpo.sh` | GRPO | No |
 | `train_capo.sh` | CAPO | No |
 
-## Prerequisites
+## Hardware
 
-- 2 nodes × 8 GPUs (configured via `allocation_mode: sglang:d8p1t1+megatron:d2p1t4`)
-- Docker image built from `Dockerfile`
-- A teacher model served via vLLM/OpenAI-compatible API (SOPO only)
+- **GRPO / CAPO**: 2 nodes × 8 GPUs (configured via `allocation_mode: sglang:d8p1t1+megatron:d2p1t4`)
+- **SOPO**: same as above, plus an additional 4 GPUs on a separate node for serving the teacher model
 
 ## Configuration
 
@@ -23,9 +29,14 @@ Edit `examples/havor/config_sopo.yaml` before training:
 ```yaml
 user_root: /path/to/your/root     # base path
 areal_path: ${user_root}/...      # AReaL installation directory
-model_path: ${user_root}/...      # SFT checkpoint to start from
-data_path: ${user_root}/...       # training .jsonl file
+model_path: ${user_root}/...      # cold-start SFT model (see below)
+data_path: ${user_root}/...       # RL training data (see below)
 ```
+
+| Resource | URL |
+|---|---|
+| Cold-start SFT model | [https://huggingface.co/OverwhelmingFit/SOPO-Coldstart-ragtruth5k](#) |
+| RL training data | [https://huggingface.co/datasets/OverwhelmingFit/SOPO-RL-RAGTruth10k](#) |
 
 ## Training
 
@@ -60,3 +71,56 @@ Only required for `train_sopo.sh`:
 |---|---|
 | `TEACHER_MODEL_URL` | OpenAI-compatible API endpoint of the teacher model |
 | `TEACHER_MODEL_NAME` | Model name used in API requests |
+
+## Evaluation
+
+Evaluation runs inference on the [RAGTruth](https://arxiv.org/abs/2401.00396) test set and computes span-level and case-level F1/P/R for hallucination detection.
+
+### Step 1 — Deploy the model with vLLM
+
+```bash
+vllm serve /path/to/checkpoint \
+    --served-model-name SOPO_4B \
+    --port 8000
+```
+
+### Step 2 — Configure eval.py
+
+Edit the two constants at the top of `eval.py` to match your deployment:
+
+```python
+MODEL_URL = "http://localhost:8000/v1"   # vLLM server address
+MODEL_NAME = "SOPO_4B"                   # must match --served-model-name
+```
+
+### Step 3 — Run inference + metrics
+
+```bash
+python eval.py --num_threads 32
+```
+
+This will:
+1. Load the test set from the default parquet path
+2. Run parallel inference (`--num_threads` controls concurrency)
+3. Save raw predictions to `test_result/{MODEL_NAME}_ragtruth_test_<timestamp>.jsonl`
+4. Compute and print span-level metrics per task type (QA / Data2txt / Summary / All)
+5. Save the full metric report to `test_result/..._metric.json`
+
+**Optional arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--num_threads` | 32 | Parallel inference threads |
+| `--chosen_task` | `QA,Data2txt,Summary` | Task types to evaluate |
+| `--filepath` | _(empty)_ | Skip inference, load predictions from an existing `.jsonl` file |
+
+### Step 4 — Read results
+
+Console output includes per-task metrics and a comma-separated string ready for spreadsheet copy-paste (order: Summary / QA / Data2txt / All, each with F1 / P / R at span level).
+
+```
+# example output
+task_type: All
+case_level: precision: 0.7812, recall: 0.7234, f1: 0.7512
+span_level: precision: 0.6923, recall: 0.6541, f1: 0.6726
+```
