@@ -72,6 +72,22 @@ Only required for `train_sopo.sh`:
 | `TEACHER_MODEL_URL` | OpenAI-compatible API endpoint of the teacher model |
 | `TEACHER_MODEL_NAME` | Model name used in API requests |
 
+Start the teacher model with vLLM before launching training:
+
+```bash
+vllm serve /path/to/Qwen3-Next-80B-A3B-Instruct \
+    --served-model-name Qwen3-Next-80B-A3B-Instruct \
+    --port 8000 \
+    --tensor-parallel-size 4
+```
+
+Then set the env vars in `train_sopo.sh` accordingly:
+
+```bash
+export TEACHER_MODEL_URL="http://<teacher-node-ip>:8000/v1"
+export TEACHER_MODEL_NAME="Qwen3-Next-80B-A3B-Instruct"
+```
+
 ## Evaluation
 
 Evaluation runs inference on the [RAGTruth](https://arxiv.org/abs/2401.00396) test set and computes span-level and case-level F1/P/R for hallucination detection.
@@ -113,14 +129,3 @@ This will:
 | `--num_threads` | 32 | Parallel inference threads |
 | `--chosen_task` | `QA,Data2txt,Summary` | Task types to evaluate |
 | `--filepath` | _(empty)_ | Skip inference, load predictions from an existing `.jsonl` file |
-
-### Step 4 — Read results
-
-Console output includes per-task metrics and a comma-separated string ready for spreadsheet copy-paste (order: Summary / QA / Data2txt / All, each with F1 / P / R at span level).
-
-```
-# example output
-task_type: All
-case_level: precision: 0.7812, recall: 0.7234, f1: 0.7512
-span_level: precision: 0.6923, recall: 0.6541, f1: 0.6726
-```

@@ -423,7 +423,7 @@ if __name__ == "__main__":
     inference_latency_meta = None
     if not len(args.filepath):
         ### INFERENCE
-        dp = "/data/dongjiawei/data/seek/hallu_validator/data_fact_checking/ragtruth/ragtruth_processed/test.parquet"
+        dp = "./data/test/ragtruth.parquet"
         data = pd.read_parquet(dp)
         data_fmt = data.to_dict("records")
         results = []

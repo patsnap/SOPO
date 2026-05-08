@@ -1,6 +1,6 @@
 experiment_name: havor
 trial_name: grpo_4b
-user_root: /mnt/cfs-rd/dongjiawei
+user_root: /root
 areal_path: ${user_root}/projects/rl/AReaL_20251111_040
 model_path: ${user_root}/models/qwen3_4b_2507_ragtruth_sft_5k
 data_path: ${user_root}/data/rl/ragtruth/train_rl_10k_20251124_reasoning_areal.jsonl
