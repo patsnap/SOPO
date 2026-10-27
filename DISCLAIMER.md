@@ -1,0 +1,9 @@
+# Disclaimer
+
+SOPO is provided for research, development, and evaluation of reinforcement-learning methods for hallucination detection. It is not a guarantee that a model's output, explanation, citation, hallucination label, or benchmark score is correct, complete, safe, or suitable for any particular purpose. Users must independently verify outputs before relying on them in legal, medical, financial, patent, regulatory, or other consequential settings.
+
+You are responsible for obtaining the rights and permissions needed to access, train on, evaluate with, or redistribute any input data, benchmarks, prompts, model weights, teacher-model services, and generated outputs. Do not submit confidential, personal, proprietary, or otherwise restricted material to a local or remote model service unless you are authorized to do so and have assessed the applicable privacy, security, contractual, and legal obligations. In particular, a configured teacher-model endpoint may receive prompts or other training data during a run.
+
+The root [Apache License 2.0](LICENSE) applies only to material that the SOPO contributors have the rights to license under it. It does not relicense third-party code or grant rights in separately licensed model weights, datasets, benchmark content, or external services. Preserve any applicable third-party copyright and license notices, including the existing MIT licenses in [`evaluation/`](evaluation/LICENSE) and [`evaluation/latex2sympy/`](evaluation/latex2sympy/LICENSE.txt), and review upstream terms before redistribution or commercial use.
+
+You are responsible for complying with applicable laws and regulations, including those relating to intellectual property, privacy, data protection, export controls, and sanctions. The software and any accompanying materials are provided **“AS IS”**, without warranties; the limitations of liability and other terms in the applicable licenses continue to apply.
